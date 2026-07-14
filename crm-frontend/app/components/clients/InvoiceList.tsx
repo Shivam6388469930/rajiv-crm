@@ -1,133 +1,134 @@
 // components/admin/invoices/InvoiceList.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   EyeIcon,
   PencilIcon,
   TrashIcon,
   PrinterIcon,
-  DownloadIcon,
   CheckCircleIcon,
   ClockIcon,
   XCircleIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
+import {
+  getInvoices,
+  deleteInvoice,
+  type Invoice,
+} from "@/app/services/invoice.service";
 
 interface InvoiceListProps {
-  onInvoiceSelect: (invoice: any) => void;
-  onEdit: (invoice: any) => void;
+  onInvoiceSelect: (invoice: Invoice) => void;
+  onEdit: (invoice: Invoice) => void;
+  refreshKey?: number; // increment this from parent to trigger a reload
 }
 
-// Mock invoice data
-const mockInvoices = [
-  {
-    id: "1",
-    invoice_number: "INV-2024-001",
-    customer: {
-      id: "1",
-      name: "Dr. Sarah Johnson",
-      company: "Johnson Eye Clinic",
-    },
-    date: "2024-01-20",
-    due_date: "2024-02-19",
-    items: [
-      { name: "Eyeglasses - Aviator Gold", quantity: 2, price: 225.00, total: 450.00 },
-      { name: "Cleaning Kit", quantity: 3, price: 15.00, total: 45.00 },
-    ],
-    subtotal: 495.00,
-    discount: 45.00,
-    tax: 27.00,
-    shipping: 0,
-    total: 477.00,
-    paid: 477.00,
-    due: 0,
-    status: "paid",
-  },
-  {
-    id: "2",
-    invoice_number: "INV-2024-002",
-    customer: {
-      id: "1",
-      name: "Dr. Sarah Johnson",
-      company: "Johnson Eye Clinic",
-    },
-    date: "2024-02-15",
-    due_date: "2024-03-16",
-    items: [
-      { name: "Contact Lenses - Daily", quantity: 4, price: 80.00, total: 320.00 },
-    ],
-    subtotal: 320.00,
-    discount: 0,
-    tax: 19.20,
-    shipping: 10.00,
-    total: 349.20,
-    paid: 200.00,
-    due: 149.20,
-    status: "partial",
-  },
-  {
-    id: "3",
-    invoice_number: "INV-2024-003",
-    customer: {
-      id: "2",
-      name: "Michael Chen",
-      company: "Vision Care Center",
-    },
-    date: "2024-03-10",
-    due_date: "2024-04-09",
-    items: [
-      { name: "Progressive Lenses", quantity: 2, price: 390.00, total: 780.00 },
-      { name: "Anti-Reflective Coating", quantity: 2, price: 50.00, total: 100.00 },
-    ],
-    subtotal: 880.00,
-    discount: 88.00,
-    tax: 47.52,
-    shipping: 0,
-    total: 839.52,
-    paid: 0,
-    due: 839.52,
-    status: "unpaid",
-  },
-  {
-    id: "4",
-    invoice_number: "INV-2024-004",
-    customer: {
-      id: "3",
-      name: "Emily Davis",
-      company: "Optix Store",
-    },
-    date: "2024-03-01",
-    due_date: "2024-03-31",
-    items: [
-      { name: "Frame Repair Kit", quantity: 3, price: 150.00, total: 450.00 },
-    ],
-    subtotal: 450.00,
-    discount: 0,
-    tax: 27.00,
-    shipping: 0,
-    total: 477.00,
-    paid: 477.00,
-    due: 0,
-    status: "completed",
-  },
-];
-
 const statusConfig = {
-  paid: { color: "bg-green-50 text-green-700", icon: CheckCircleIcon, label: "Paid" },
-  partial: { color: "bg-yellow-50 text-yellow-700", icon: ClockIcon, label: "Partial" },
-  unpaid: { color: "bg-red-50 text-red-700", icon: XCircleIcon, label: "Unpaid" },
-  completed: { color: "bg-blue-50 text-blue-700", icon: CheckCircleIcon, label: "Completed" },
-  draft: { color: "bg-gray-50 text-gray-700", icon: ClockIcon, label: "Draft" },
+  paid: {
+    color: "bg-green-50 text-green-700",
+    icon: CheckCircleIcon,
+    label: "Paid",
+  },
+  partial: {
+    color: "bg-yellow-50 text-yellow-700",
+    icon: ClockIcon,
+    label: "Partial",
+  },
+  unpaid: {
+    color: "bg-red-50 text-red-700",
+    icon: XCircleIcon,
+    label: "Unpaid",
+  },
+  completed: {
+    color: "bg-blue-50 text-blue-700",
+    icon: CheckCircleIcon,
+    label: "Completed",
+  },
+  draft: {
+    color: "bg-gray-50 text-gray-700",
+    icon: ClockIcon,
+    label: "Draft",
+  },
+  cancelled: {
+    color: "bg-gray-50 text-gray-500",
+    icon: XCircleIcon,
+    label: "Cancelled",
+  },
 };
 
-export default function InvoiceList({ onInvoiceSelect, onEdit }: InvoiceListProps) {
-  const [invoices] = useState(mockInvoices);
+export default function InvoiceList({
+  onInvoiceSelect,
+  onEdit,
+  refreshKey = 0,
+}: InvoiceListProps) {
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this invoice?")) {
-      console.log("Delete invoice:", id);
+  const fetchInvoices = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const res = await getInvoices();
+    if (res.success && res.data) {
+      setInvoices(res.data);
+    } else {
+      setError(res.message || "Failed to load invoices");
     }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices, refreshKey]);
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this invoice?")) return;
+
+    setDeletingId(id);
+    const res = await deleteInvoice(id);
+    if (res.success) {
+      setInvoices((prev) => prev.filter((inv) => inv._id !== id));
+    } else {
+      alert(res.message || "Failed to delete invoice");
+    }
+    setDeletingId(null);
   };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+        <ArrowPathIcon className="h-8 w-8 text-indigo-400 animate-spin mx-auto mb-3" />
+        <p className="text-sm text-gray-500">Loading invoices...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+        <p className="text-sm text-red-600 mb-3">{error}</p>
+        <button
+          onClick={fetchInvoices}
+          className="text-sm text-indigo-600 hover:underline"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  if (invoices.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+        <p className="text-sm text-gray-500">
+          No invoices found. Create your first invoice.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -160,10 +161,13 @@ export default function InvoiceList({ onInvoiceSelect, onEdit }: InvoiceListProp
           </thead>
           <tbody className="divide-y divide-gray-100">
             {invoices.map((invoice) => {
-              const status = statusConfig[invoice.status as keyof typeof statusConfig] || statusConfig.draft;
+              const statusKey =
+                invoice.status as keyof typeof statusConfig;
+              const status =
+                statusConfig[statusKey] || statusConfig.unpaid;
               return (
                 <tr
-                  key={invoice.id}
+                  key={invoice._id}
                   className="hover:bg-gray-50 transition cursor-pointer"
                   onClick={() => onInvoiceSelect(invoice)}
                 >
@@ -180,9 +184,11 @@ export default function InvoiceList({ onInvoiceSelect, onEdit }: InvoiceListProp
                   <td className="px-4 py-3">
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        {invoice.customer.name}
+                        {invoice.customer?.name}
                       </p>
-                      <p className="text-xs text-gray-500">{invoice.customer.company}</p>
+                      <p className="text-xs text-gray-500">
+                        {invoice.customer?.company}
+                      </p>
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -191,7 +197,8 @@ export default function InvoiceList({ onInvoiceSelect, onEdit }: InvoiceListProp
                         {new Date(invoice.date).toLocaleDateString()}
                       </p>
                       <p className="text-xs text-gray-500">
-                        Due: {new Date(invoice.due_date).toLocaleDateString()}
+                        Due:{" "}
+                        {new Date(invoice.due_date).toLocaleDateString()}
                       </p>
                     </div>
                   </td>
@@ -216,7 +223,9 @@ export default function InvoiceList({ onInvoiceSelect, onEdit }: InvoiceListProp
                   <td className="px-4 py-3">
                     <span
                       className={`text-sm font-medium ${
-                        invoice.due > 0 ? "text-red-600" : "text-green-600"
+                        invoice.due > 0
+                          ? "text-red-600"
+                          : "text-green-600"
                       }`}
                     >
                       ${invoice.due.toFixed(2)}
@@ -230,6 +239,7 @@ export default function InvoiceList({ onInvoiceSelect, onEdit }: InvoiceListProp
                           onInvoiceSelect(invoice);
                         }}
                         className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
+                        title="View"
                       >
                         <EyeIcon className="h-4 w-4" />
                       </button>
@@ -239,24 +249,25 @@ export default function InvoiceList({ onInvoiceSelect, onEdit }: InvoiceListProp
                           onEdit(invoice);
                         }}
                         className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                        title="Edit"
                       >
                         <PencilIcon className="h-4 w-4" />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          console.log("Print invoice:", invoice.id);
+                          window.print();
                         }}
                         className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition"
+                        title="Print"
                       >
                         <PrinterIcon className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(invoice.id);
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                        onClick={(e) => handleDelete(e, invoice._id)}
+                        disabled={deletingId === invoice._id}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition disabled:opacity-50"
+                        title="Delete"
                       >
                         <TrashIcon className="h-4 w-4" />
                       </button>

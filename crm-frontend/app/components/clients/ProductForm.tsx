@@ -211,7 +211,7 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }));
-      setSubcategories(formattedSubs);
+      setSubcategories(formattedSubs as any[]);
     }
     
     setSelectedSubcategory("");
@@ -227,7 +227,7 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
 
   // Get select options based on field config
   const getSelectOptions = (field: any) => {
-    if (field.options) return field.options.map(opt => ({ value: opt, label: opt }));
+    if (field.options) return field.options.map((opt: any) => ({ value: opt, label: opt }));
     if (field.endpoint) {
       switch (field.endpoint) {
         case "frameShapes": return frameShapes.map((s: any) => ({ value: s._id, label: s.name }));
