@@ -111,16 +111,27 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
   const [selectedSubcategory, setSelectedSubcategory] = useState<string>("");
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
   // Load master data
   useEffect(() => {
     if (isOpen) {
       loadMasterData();
       if (product) {
+        setEditingProductId(product._id);
         setSelectedCategory(product.category?._id || product.category);
         setSelectedSubcategory(product.subcategory?._id || product.subcategory);
-        setFormData(product);
+        // Flatten attributes into formData for editing
+        const flattenedData = {
+          ...product,
+          ...(product.attributes || {}),
+          // Ensure brand and supplier are ObjectIds, not objects
+          brand: product.brand?._id || product.brand,
+          supplier: product.supplier?._id || product.supplier,
+        };
+        setFormData(flattenedData);
       } else {
+        setEditingProductId(null);
         setSelectedCategory("");
         setSelectedSubcategory("");
         setFormData({});
@@ -189,33 +200,27 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
   useEffect(() => {
     if (!selectedCategory) {
       setSubcategories([]);
-      setSelectedSubcategory("");
+      if (!editingProductId) {
+        setSelectedSubcategory("");
+      }
       return;
     }
 
     const category = categories.find(c => c._id === selectedCategory);
     
-    // If category has subcategories array, use it
+    // Only use subcategories from database, don't create static ones
     if (category?.subcategories && category.subcategories.length > 0) {
       setSubcategories(category.subcategories);
     } else {
-      // Fallback to static subcategories
-      const categorySlug = category?.slug || category?.name?.toLowerCase() || "";
-      const staticSubs = CATEGORY_SUBCATEGORIES[categorySlug] || [];
-      // Convert static subcategories to the format expected by the component
-      const formattedSubs = staticSubs.map((name, index) => ({
-        _id: `static-${index}`,
-        name,
-        categoryId: selectedCategory,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }));
-      setSubcategories(formattedSubs as any[]);
+      // If no subcategories exist, set empty array - user must create subcategories first
+      setSubcategories([]);
     }
     
-    setSelectedSubcategory("");
-  }, [selectedCategory, categories]);
+    // Only clear selected subcategory if we're creating a new product
+    if (!editingProductId) {
+      setSelectedSubcategory("");
+    }
+  }, [selectedCategory, categories, editingProductId]);
 
   // Get field configs for selected category
   const getFieldConfigs = () => {
@@ -250,6 +255,11 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
         return newErrors;
       });
     }
+  };
+
+  const handleClose = () => {
+    setEditingProductId(null);
+    onClose();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -304,8 +314,8 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
         minimum_stock: parseInt(formData.minimum_stock) || 0,
         status: formData.status || "active",
         description: formData.description || "",
-        // Category-specific fields
-        ...fieldConfigs.reduce((acc: any, field: any) => {
+        // Category-specific fields stored under attributes
+        attributes: fieldConfigs.reduce((acc: any, field: any) => {
           if (formData[field.name] !== undefined && formData[field.name] !== "") {
             acc[field.name] = formData[field.name];
           }
@@ -319,7 +329,7 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
 
       if (response.success) {
         onSuccess?.();
-        onClose();
+        handleClose();
       } else {
         setErrors({ submit: response.message || "Failed to save product" });
       }
@@ -345,7 +355,7 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
             <p className="text-sm text-gray-500">Enter product details</p>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1 rounded-lg hover:bg-gray-100 transition"
           >
             <XMarkIcon className="h-5 w-5 text-gray-500" />
@@ -422,23 +432,29 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Subcategory <span className="text-red-500">*</span>
               </label>
-              <select
-                value={selectedSubcategory}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSelectedSubcategory(value);
-                  handleInputChange("subcategory", value);
-                }}
-                disabled={!selectedCategory}
-                className={`w-full px-3 py-2 border ${errors.subcategory ? "border-red-500" : "border-gray-200"} rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed`}
-              >
-                <option value="">Select Subcategory</option>
-                {subcategories.map((sub) => (
-                  <option key={sub._id} value={sub._id}>
-                    {sub.name}
-                  </option>
-                ))}
-              </select>
+              {subcategories.length === 0 && selectedCategory ? (
+                <div className="w-full px-3 py-2 border border-red-200 rounded-lg bg-red-50 text-red-700 text-sm flex items-center gap-2">
+                  <span>No subcategories available for this category</span>
+                </div>
+              ) : (
+                <select
+                  value={selectedSubcategory}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedSubcategory(value);
+                    handleInputChange("subcategory", value);
+                  }}
+                  disabled={!selectedCategory}
+                  className={`w-full px-3 py-2 border ${errors.subcategory ? "border-red-500" : "border-gray-200"} rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed`}
+                >
+                  <option value="">Select Subcategory</option>
+                  {subcategories.map((sub) => (
+                    <option key={sub._id} value={sub._id}>
+                      {sub.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               {errors.subcategory && <p className="mt-1 text-xs text-red-500">{errors.subcategory}</p>}
             </div>
 
@@ -635,7 +651,7 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
           <div className="flex gap-3 pt-4 border-t border-gray-200">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={loading}
               className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
             >
