@@ -86,6 +86,17 @@ const productSchema = new Schema(
         default: false,
       },
     }],
+
+    // Color-wise quality and quantity variants
+    colorVariants: [
+      {
+        color: { type: String, required: true },
+        quality: { type: String, default: "Standard" },
+        quantity: { type: Number, required: true, default: 0, min: 0 },
+        sku: { type: String, trim: true },
+        imageUrl: { type: String, default: "" },
+      },
+    ],
   },
   {
     timestamps: true,

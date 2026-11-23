@@ -32,4 +32,7 @@ const categorySchema = new Schema(
 const Category =
   models.Category || model("Category", categorySchema);
 
+export const Subcategory =
+  models.Subcategory || model("Subcategory", subCategorySchema);
+
 export default Category;

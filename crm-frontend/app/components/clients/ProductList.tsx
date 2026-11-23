@@ -147,47 +147,95 @@ export default function ProductList({ viewMode, onEdit, filters }: ProductListPr
   if (viewMode === "grid") {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {sortedProducts.map((product) => (
+        {sortedProducts.map((product) => {
+          const primaryImage =
+            product.images?.find((img) => img.isPrimary)?.url || product.images?.[0]?.url;
+          return (
           <div
             key={product._id}
-            className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition"
+            className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition flex flex-col justify-between"
           >
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
+            <div>
+              {/* Product Thumbnail & Category */}
+              <div className="relative mb-3 h-36 bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center border border-gray-100">
+                {primaryImage ? (
+                  <img
+                    src={primaryImage}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="text-gray-300 flex flex-col items-center">
+                    <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-2xs text-gray-400 mt-1">No Image</span>
+                  </div>
+                )}
                 <span
-                  className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryColors[getCategoryName(product.category).toLowerCase()] || "bg-gray-50 text-gray-700"}`}
+                  className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-2xs font-bold uppercase shadow-xs ${
+                    categoryColors[getCategoryName(product.category).toLowerCase()] ||
+                    "bg-gray-50 text-gray-700"
+                  }`}
                 >
-                  {getCategoryName(product.category).replace("_", " ").toUpperCase()}
+                  {getCategoryName(product.category).replace("_", " ")}
                 </span>
-                <h3 className="text-sm font-semibold text-gray-900 mt-2 line-clamp-2">
-                  {product.name}
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">{product.sku}</p>
               </div>
-              <div className="flex gap-1 ml-2">
-                <button
-                  onClick={() => onEdit(product)}
-                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
-                >
-                  <PencilIcon className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(product._id)}
-                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </button>
+
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-gray-900 line-clamp-1">
+                    {product.name}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">SKU: {product.sku}</p>
+                </div>
+                <div className="flex gap-1 ml-2">
+                  <button
+                    onClick={() => onEdit(product)}
+                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(product._id)}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
+
+              {/* Color & Quality Variants Badges */}
+              {product.colorVariants && product.colorVariants.length > 0 && (
+                <div className="mb-3 pt-1 border-t border-gray-100 flex flex-wrap gap-1">
+                  {product.colorVariants.map((v: any, i: number) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-medium"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                      {v.color} ({v.quality || "Std"}: {v.quantity})
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="space-y-1.5 text-sm">
+
+            <div className="space-y-1.5 text-sm pt-2 border-t border-gray-100">
               <div className="flex justify-between">
                 <span className="text-gray-500">Selling Price</span>
                 <span className="font-medium text-gray-900">${product.selling_price}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Stock</span>
-                <span className={`font-medium ${product.stock <= (product.minimum_stock || 0) ? "text-red-600" : "text-gray-900"}`}>
-                  {product.stock}
+                <span
+                  className={`font-medium ${
+                    product.stock <= (product.minimum_stock || 0)
+                      ? "text-red-600 font-bold"
+                      : "text-gray-900"
+                  }`}
+                >
+                  {product.stock} units
                 </span>
               </div>
               <div className="flex justify-between">
@@ -196,13 +244,18 @@ export default function ProductList({ viewMode, onEdit, filters }: ProductListPr
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Status</span>
-                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[product.status]}`}>
+                <span
+                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                    statusColors[product.status]
+                  }`}
+                >
                   {product.status.replace("_", " ").toUpperCase()}
                 </span>
               </div>
             </div>
           </div>
-        ))}
+        );
+      })}
       </div>
     );
   }

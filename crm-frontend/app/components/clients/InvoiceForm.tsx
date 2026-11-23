@@ -27,7 +27,7 @@ interface InvoiceFormProps {
 
 interface InvoiceItem {
   id: string; // local UI key only
-  product_id: string;
+  product_id?: string;
   name: string;
   sku: string;
   quantity: number;
@@ -130,20 +130,48 @@ export default function InvoiceForm({
 
   if (!isOpen) return null;
 
-  const filteredProducts = products.filter(
-    (product) =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [selectedProductCategory, setSelectedProductCategory] = useState("all");
 
-  const addItem = (product: any) => {
-    const existingItem = items.find(
-      (item) => item.product_id === product._id
+  const filteredProducts = products.filter((product) => {
+    const q = searchTerm.toLowerCase().trim();
+    const name = (product.name || "").toLowerCase();
+    const sku = (product.sku || "").toLowerCase();
+    const brand =
+      typeof product.brand === "object"
+        ? (product.brand?.brandName || "").toLowerCase()
+        : String(product.brand || "").toLowerCase();
+    const catName =
+      typeof product.category === "object"
+        ? (product.category?.name || "").toLowerCase()
+        : String(product.category || "").toLowerCase();
+    const catSlug =
+      typeof product.category === "object"
+        ? (product.category?.slug || "").toLowerCase()
+        : "";
+
+    const matchesQuery = !q || name.includes(q) || sku.includes(q) || brand.includes(q) || catName.includes(q);
+
+    if (selectedProductCategory === "all") return matchesQuery;
+    return (
+      matchesQuery &&
+      (catSlug.includes(selectedProductCategory) || catName.includes(selectedProductCategory))
     );
-    if (existingItem) {
+  });
+
+  const addItem = (product: any, variant?: any) => {
+    const prodId = product._id || product.id || "";
+    const itemName = variant ? `${product.name} (${variant.color} - ${variant.quality || "Standard"})` : product.name;
+    const itemSku = variant?.sku || product.sku || "";
+    const price = product.selling_price ?? product.price ?? 0;
+
+    const existingIndex = items.findIndex(
+      (item) => item.product_id === prodId && item.name === itemName
+    );
+
+    if (existingIndex >= 0) {
       setItems(
-        items.map((item) =>
-          item.product_id === product._id
+        items.map((item, idx) =>
+          idx === existingIndex
             ? {
                 ...item,
                 quantity: item.quantity + 1,
@@ -153,12 +181,11 @@ export default function InvoiceForm({
         )
       );
     } else {
-      const price = product.selling_price ?? product.price ?? 0;
       const newItem: InvoiceItem = {
-        id: Date.now().toString(),
-        product_id: product._id,
-        name: product.name,
-        sku: product.sku,
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        product_id: prodId,
+        name: itemName,
+        sku: itemSku,
         quantity: 1,
         price,
         discount: 0,
@@ -167,8 +194,22 @@ export default function InvoiceForm({
       };
       setItems([...items, newItem]);
     }
-    setShowProductSearch(false);
-    setSearchTerm("");
+    // Keep search open or clear filter for adding more items smoothly
+  };
+
+  const addCustomItem = () => {
+    const newItem: InvoiceItem = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      product_id: "",
+      name: "Custom Optical Service / Item",
+      sku: "SRV-001",
+      quantity: 1,
+      price: 0,
+      discount: 0,
+      tax: 0,
+      total: 0,
+    };
+    setItems([...items, newItem]);
   };
 
   const removeItem = (id: string) => {
@@ -241,7 +282,10 @@ export default function InvoiceForm({
     setSubmitting(true);
 
     // Strip local UI `id` field; keep only API-relevant fields
-    const apiItems = items.map(({ id, ...rest }) => rest);
+    const apiItems = items.map(({ id, ...rest }) => ({
+      ...rest,
+      product_id: rest.product_id || undefined,
+    }));
 
     const payload = {
       invoice_number: invoiceData.invoice_number,
@@ -333,7 +377,7 @@ export default function InvoiceForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-1">
                 {customers.map((customer) => (
                   <button
-                    key={customer._id}
+                    key={customer._id || customer.id}
                     type="button"
                     onClick={() => setSelectedCustomer(customer)}
                     className="p-3 border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition text-left"
@@ -396,78 +440,207 @@ export default function InvoiceForm({
 
           {/* Product Search & Items */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <label className="block text-sm font-medium text-gray-700">
-                Invoice Items <span className="text-red-500">*</span>
+                Invoice Line Items <span className="text-red-500">*</span>
               </label>
-              <button
-                type="button"
-                onClick={() => setShowProductSearch(!showProductSearch)}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition"
-              >
-                <PlusIcon className="h-4 w-4" />
-                Add Product
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addCustomItem}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                >
+                  <PlusIcon className="h-3.5 w-3.5" />
+                  Custom Charge / Service
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowProductSearch(!showProductSearch)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg transition shadow-xs"
+                >
+                  <PlusIcon className="h-3.5 w-3.5" />
+                  {showProductSearch ? "Hide Products Catalog" : "Browse & Select Products"}
+                </button>
+              </div>
             </div>
 
             {showProductSearch && (
-              <div className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                <div className="relative">
-                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search products by name or SKU..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition bg-white"
-                    autoFocus
-                  />
+              <div className="mb-4 p-4 border border-indigo-100 rounded-2xl bg-indigo-50/30 shadow-xs space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2.5">
+                  <div className="flex-1 relative">
+                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search all products by name, SKU, brand, or category..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition bg-white text-xs"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSearchTerm("")}
+                      className="px-2.5 py-2 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-xl hover:bg-gray-50"
+                    >
+                      Clear
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-3 max-h-48 overflow-y-auto">
+
+                {/* Category filter pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+                  {[
+                    { id: "all", label: "All Catalog" },
+                    { id: "frame", label: "Frames" },
+                    { id: "lens", label: "Lenses" },
+                    { id: "contact", label: "Contact Lenses" },
+                    { id: "cover", label: "Cases & Boxes" },
+                    { id: "access", label: "Accessories" },
+                    { id: "machin", label: "Machinery" },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setSelectedProductCategory(cat.id)}
+                      className={`px-3 py-1 rounded-full text-[11px] font-medium transition whitespace-nowrap ${
+                        selectedProductCategory === cat.id
+                          ? "bg-indigo-600 text-white shadow-xs"
+                          : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                  <span className="text-[11px] text-gray-400 ml-auto flex-shrink-0 font-medium">
+                    Showing {filteredProducts.length} items
+                  </span>
+                </div>
+
+                {/* Products Grid / Cards */}
+                <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 bg-white rounded-xl border border-gray-200 shadow-xs">
                   {loadingProducts ? (
-                    <div className="flex items-center justify-center gap-2 py-4 text-gray-400 text-sm">
-                      <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                      Loading products...
+                    <div className="flex items-center justify-center gap-2 py-8 text-gray-400 text-xs">
+                      <ArrowPathIcon className="h-5 w-5 animate-spin text-indigo-600" />
+                      Loading catalog products...
                     </div>
                   ) : filteredProducts.length > 0 ? (
-                    filteredProducts.map((product) => (
-                      <button
-                        key={product._id}
-                        type="button"
-                        onClick={() => addItem(product)}
-                        className="w-full p-2 hover:bg-white rounded-lg transition flex items-center justify-between"
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {product.name}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            SKU: {product.sku}
-                          </p>
+                    filteredProducts.map((product) => {
+                      const brandName =
+                        typeof product.brand === "object"
+                          ? product.brand?.brandName
+                          : product.brand || "";
+                      const categoryName =
+                        typeof product.category === "object"
+                          ? product.category?.name
+                          : product.category || "";
+                      const img =
+                        product.images?.[0]?.url ||
+                        (Array.isArray(product.images) && product.images[0]) ||
+                        null;
+                      const hasVariants =
+                        Array.isArray(product.colorVariants) && product.colorVariants.length > 0;
+
+                      return (
+                        <div
+                          key={product._id}
+                          className="p-3 hover:bg-gray-50/80 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            {img ? (
+                              <img
+                                src={img}
+                                alt={product.name}
+                                className="w-10 h-10 rounded-lg border border-gray-200 object-cover flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center text-base flex-shrink-0">
+                                👓
+                              </div>
+                            )}
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-gray-900">{product.name}</span>
+                                {product.sku && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-700">
+                                    {product.sku}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                                {categoryName && (
+                                  <span className="font-medium text-indigo-600">
+                                    {categoryName}
+                                  </span>
+                                )}
+                                {brandName && <span>• {brandName}</span>}
+                                <span>
+                                  • Stock:{" "}
+                                  <strong
+                                    className={
+                                      product.stock > 5
+                                        ? "text-emerald-600"
+                                        : product.stock > 0
+                                        ? "text-amber-600"
+                                        : "text-red-500"
+                                    }
+                                  >
+                                    {product.stock}
+                                  </strong>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 justify-between sm:justify-end">
+                            <div className="text-right">
+                              <span className="text-sm font-bold text-gray-900">
+                                ₹{(product.selling_price ?? product.price ?? 0).toFixed(2)}
+                              </span>
+                            </div>
+
+                            {hasVariants ? (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => addItem(product)}
+                                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-semibold transition"
+                                >
+                                  + Standard
+                                </button>
+                                {product.colorVariants.slice(0, 3).map((v: any, vi: number) => (
+                                  <button
+                                    key={vi}
+                                    type="button"
+                                    onClick={() => addItem(product, v)}
+                                    className="px-2 py-1 bg-white border border-gray-200 hover:border-indigo-400 hover:text-indigo-600 text-gray-700 rounded-lg text-[10px] transition"
+                                    title={`Add ${v.color} (${v.quantity} in stock)`}
+                                  >
+                                    +{v.color}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => addItem(product)}
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition shadow-xs flex items-center gap-1"
+                              >
+                                <PlusIcon className="w-3.5 h-3.5" />
+                                Select Product
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900">
-                            ${(product.selling_price ?? product.price ?? 0).toFixed(2)}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Stock: {product.stock}
-                          </p>
-                        </div>
-                      </button>
-                    ))
+                      );
+                    })
                   ) : (
-                    <p className="text-center text-gray-500 py-4">
-                      No products found
-                    </p>
+                    <div className="text-center text-gray-400 py-8 text-xs">
+                      No matching products found in catalog
+                    </div>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowProductSearch(false)}
-                  className="mt-2 text-sm text-gray-500 hover:text-gray-700"
-                >
-                  Close
-                </button>
               </div>
             )}
 

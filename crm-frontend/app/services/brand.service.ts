@@ -9,6 +9,7 @@ const BASE_URL = "/api/brands";
 
 export interface Brand {
   id: string;
+  _id?: string;
   brandName: string;
   slug: string;
   description: string;
@@ -43,7 +44,8 @@ function normalizeBrand(raw: any): Brand {
     categoryField && typeof categoryField === "object" && !Array.isArray(categoryField);
 
   return {
-    id: raw?.id ?? raw?._id ?? "",
+    id: String(raw?.id ?? raw?._id ?? ""),
+    _id: String(raw?._id ?? raw?.id ?? ""),
     brandName: raw?.brandName ?? "",
     slug: raw?.slug ?? "",
     description: raw?.description ?? "",

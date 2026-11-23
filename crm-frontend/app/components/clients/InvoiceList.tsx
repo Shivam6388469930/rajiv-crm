@@ -22,6 +22,8 @@ interface InvoiceListProps {
   onInvoiceSelect: (invoice: Invoice) => void;
   onEdit: (invoice: Invoice) => void;
   refreshKey?: number; // increment this from parent to trigger a reload
+  statusFilter?: string;
+  searchQuery?: string;
 }
 
 const statusConfig = {
@@ -61,6 +63,8 @@ export default function InvoiceList({
   onInvoiceSelect,
   onEdit,
   refreshKey = 0,
+  statusFilter = "",
+  searchQuery = "",
 }: InvoiceListProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,14 +74,17 @@ export default function InvoiceList({
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await getInvoices();
+    const res = await getInvoices({
+      status: statusFilter || undefined,
+      search: searchQuery || undefined,
+    });
     if (res.success && res.data) {
       setInvoices(res.data);
     } else {
       setError(res.message || "Failed to load invoices");
     }
     setLoading(false);
-  }, []);
+  }, [statusFilter, searchQuery]);
 
   useEffect(() => {
     fetchInvoices();
@@ -205,10 +212,10 @@ export default function InvoiceList({
                   <td className="px-4 py-3">
                     <div>
                       <p className="text-sm font-semibold text-gray-900">
-                        ${invoice.total.toFixed(2)}
+                        ${(invoice.total ?? 0).toFixed(2)}
                       </p>
                       <p className="text-xs text-gray-500">
-                        Paid: ${invoice.paid.toFixed(2)}
+                        Paid: ${(invoice.paid ?? 0).toFixed(2)}
                       </p>
                     </div>
                   </td>
@@ -228,7 +235,7 @@ export default function InvoiceList({
                           : "text-green-600"
                       }`}
                     >
-                      ${invoice.due.toFixed(2)}
+                      ${(invoice.due ?? 0).toFixed(2)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">

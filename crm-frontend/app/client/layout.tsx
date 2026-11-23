@@ -3,7 +3,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { clearToken, getCurrentUser } from "@/app/services/auth.service";
 import {
   HomeIcon,
   UsersIcon,
@@ -20,6 +21,9 @@ import {
   MagnifyingGlassIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChatBubbleLeftRightIcon,
+  ArrowTopRightOnSquareIcon,
+  ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 
 interface NavItem {
@@ -29,7 +33,7 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  { name: "Dashboard", href: "/admin", icon: HomeIcon },
+  { name: "Dashboard", href: "/client", icon: HomeIcon },
   { name: "Categories", href: "/client/categories", icon: UsersIcon },
    { name: "Add Brands", href: "/client/brand", icon: UsersIcon },
      { name: "Add Frame Shape", href: "/client/frame-shapes", icon: UsersIcon },
@@ -42,8 +46,11 @@ const navigation: NavItem[] = [
   { name: "Products", href: "/client/products", icon: CalendarIcon },
   { name: "Customers", href: "/client/customers", icon: ShoppingBagIcon },
   { name: "Invoice", href: "/client/invoice", icon: EyeIcon },
-  { name: "Orders", href: "/admin/orders", icon: ChartBarIcon },
-  { name: "Settings", href: "/admin/settings", icon: Cog6ToothIcon },
+  { name: "Customer Chats", href: "/client/chat", icon: ChatBubbleLeftRightIcon },
+  { name: "Stock Shortage", href: "/client/stock-shortage", icon: ExclamationTriangleIcon },
+  { name: "Customer Storefront", href: "/customer", icon: ArrowTopRightOnSquareIcon },
+  { name: "Orders", href: "/client/orders", icon: ChartBarIcon },
+  { name: "Settings", href: "/client/settings", icon: Cog6ToothIcon },
 ];
 
 export default function AdminLayout({
@@ -52,8 +59,20 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (user) setCurrentUser(user);
+  }, []);
+
+  const handleLogout = () => {
+    clearToken();
+    router.push("/login");
+  };
 
   // Load collapsed state from localStorage
   useEffect(() => {
@@ -164,9 +183,7 @@ export default function AdminLayout({
                 {!isCollapsed && <span>Profile</span>}
               </Link>
               <button
-                onClick={() => {
-                  console.log("Logout");
-                }}
+                onClick={handleLogout}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors ${
                   isCollapsed ? "justify-center" : ""
                 }`}
@@ -183,11 +200,17 @@ export default function AdminLayout({
             <div className="px-4 py-4 border-t border-gray-200">
               <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50">
                 <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-semibold text-indigo-700">JD</span>
+                  <span className="text-sm font-semibold text-indigo-700 uppercase">
+                    {currentUser?.name ? currentUser.name.slice(0, 2) : "SA"}
+                  </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">John Doe</p>
-                  <p className="text-xs text-gray-500 truncate">Admin</p>
+                  <p className="text-sm font-medium text-gray-800 truncate">
+                    {currentUser?.name || "Super Admin"}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate capitalize">
+                    {currentUser?.email || "admin@gmail.com"}
+                  </p>
                 </div>
               </div>
             </div>

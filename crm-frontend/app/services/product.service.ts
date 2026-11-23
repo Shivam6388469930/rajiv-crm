@@ -16,6 +16,7 @@ export interface Product {
   description: string;
   attributes: Record<string, any>;
   images: Array<{ url: string; alt: string; isPrimary: boolean }>;
+  colorVariants?: Array<{ color: string; quality: string; quantity: number; sku?: string; imageUrl?: string }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +37,7 @@ export interface ProductInput {
   description?: string;
   attributes?: Record<string, any>;
   images?: Array<{ url: string; alt: string; isPrimary: boolean }>;
+  colorVariants?: Array<{ color: string; quality: string; quantity: number; sku?: string; imageUrl?: string }>;
 }
 
 export interface ApiResponse<T = any> {

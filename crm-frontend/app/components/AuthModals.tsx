@@ -465,7 +465,7 @@ export function LoginModal({
       // that removes the token from JS-accessible storage entirely and
       // protects against XSS-based token theft.
       if (res.data?.accessToken) {
-        setToken(res.data.accessToken);
+        setToken(res.data.accessToken, res.data.user);
       }
       onClose();
       router.push("/client");

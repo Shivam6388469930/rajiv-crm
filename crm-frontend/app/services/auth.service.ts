@@ -95,11 +95,32 @@ export const resetPassword = (data: ResetPasswordPayload) =>
 // never goes into that cookie.
 
 const TOKEN_KEY = "token";
+const USER_KEY = "opticcrm_user";
 
-export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-  // 7 day, readable-by-middleware flag (not the token itself)
-  document.cookie = `isLoggedIn=1; path=/; max-age=${60 * 60 * 24 * 7}`;
+export function setToken(token: string, user?: any) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(TOKEN_KEY, token);
+    if (user) {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    }
+    // 7 day, readable-by-middleware flag (not the token itself)
+    document.cookie = `isLoggedIn=1; path=/; max-age=${60 * 60 * 24 * 7}`;
+    document.cookie = `token=${token}; path=/; max-age=${60 * 60 * 24 * 7}`;
+    if (user?.role) {
+      document.cookie = `userRole=${user.role}; path=/; max-age=${60 * 60 * 24 * 7}`;
+    }
+  }
+}
+
+export function getCurrentUser(): any | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 export function getToken(): string | null {
@@ -108,6 +129,11 @@ export function getToken(): string | null {
 }
 
 export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
-  document.cookie = "isLoggedIn=; path=/; max-age=0";
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    document.cookie = "isLoggedIn=; path=/; max-age=0";
+    document.cookie = "token=; path=/; max-age=0";
+    document.cookie = "userRole=; path=/; max-age=0";
+  }
 }

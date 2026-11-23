@@ -19,6 +19,7 @@ export default function InvoicesPage() {
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [listRefreshKey, setListRefreshKey] = useState(0);
   const [statusFilter, setStatusFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const refreshList = () => setListRefreshKey((k) => k + 1);
 
@@ -85,6 +86,8 @@ export default function InvoicesPage() {
               <input
                 type="text"
                 placeholder="Search invoices by number, customer, or product..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
               />
             </div>
@@ -115,6 +118,8 @@ export default function InvoicesPage() {
             onInvoiceSelect={handleInvoiceSelect}
             onEdit={handleEdit}
             refreshKey={listRefreshKey}
+            statusFilter={statusFilter}
+            searchQuery={searchQuery}
           />
         </>
       ) : (

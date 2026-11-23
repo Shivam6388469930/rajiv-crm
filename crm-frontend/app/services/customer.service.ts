@@ -10,6 +10,7 @@ export interface InvoiceItem {
 
 export interface Invoice {
   id: string;
+  _id?: string;
   date: string;
   amount: number;
   paid: number;
@@ -22,6 +23,7 @@ export type CustomerStatus = "active" | "inactive" | "blocked" | "pending";
 
 export interface Customer {
   id: string;
+  _id?: string;
   name: string;
   email: string;
   phone: string;
@@ -94,7 +96,8 @@ async function request<T = any>(
 // customer with no orders yet may not have total_spent/outstanding set).
 function normalizeCustomer(raw: any): Customer {
   return {
-    id: raw?.id ?? raw?._id ?? "",
+    id: String(raw?.id ?? raw?._id ?? ""),
+    _id: String(raw?._id ?? raw?.id ?? ""),
     name: raw?.name ?? "",
     email: raw?.email ?? "",
     phone: raw?.phone ?? "",

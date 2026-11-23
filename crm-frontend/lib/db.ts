@@ -3,6 +3,10 @@ import seedAdmin from "./seedAdmin";
 
 const MONGODB_URI = process.env.MONGODB_URI!;
 
+if (!MONGODB_URI) {
+  throw new Error("Please define the MONGODB_URI environment variable in .env");
+}
+
 let cached = (global as any).mongoose;
 
 if (!cached) {
@@ -13,13 +17,34 @@ if (!cached) {
 }
 
 export default async function connectDB() {
-  if (cached.conn) return cached.conn;
+  if (cached.conn) {
+    return cached.conn;
+  }
 
-  cached.promise = mongoose.connect(MONGODB_URI);
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+    };
 
-  cached.conn = await cached.promise;
+    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
+      // Run seedAdmin in the background once after successful connection without blocking requests
+      seedAdmin().catch((err) => {
+        console.error("seedAdmin background notice:", err.message || err);
+      });
+      return mongooseInstance;
+    });
+  }
 
-  await seedAdmin(); // Runs only after a successful DB connection
+  try {
+    cached.conn = await cached.promise;
+  } catch (e) {
+    cached.promise = null;
+    throw e;
+  }
 
   return cached.conn;
 }

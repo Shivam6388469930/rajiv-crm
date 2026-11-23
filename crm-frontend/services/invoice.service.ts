@@ -1,34 +1,64 @@
 // services/invoice.service.ts
 import Invoice from "@/models/Invoice";
+import "@/models/Customer";
+import "@/models/Product";
 import mongoose from "mongoose";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+function cleanInvoiceItems(items: any[]): any[] {
+  return (items || []).map((item) => {
+    const qty = Math.max(1, Number(item.quantity) || 1);
+    const price = Math.max(0, Number(item.price) || 0);
+    const discount = Math.max(0, Number(item.discount) || 0);
+    const tax = Math.max(0, Number(item.tax) || 0);
+    const total =
+      item.total !== undefined && item.total !== null
+        ? Number(item.total)
+        : qty * price;
+
+    return {
+      name: item.name || "Item",
+      sku: item.sku || "",
+      quantity: qty,
+      price,
+      discount,
+      tax,
+      total,
+      product_id:
+        item.product_id && mongoose.isValidObjectId(item.product_id)
+          ? item.product_id
+          : null,
+    };
+  });
+}
+
 function computeTotals(data: any) {
-  const subtotal: number = (data.items || []).reduce(
-    (sum: number, item: any) => sum + item.total,
+  const items = cleanInvoiceItems(data.items || []);
+  const subtotal: number = items.reduce(
+    (sum: number, item: any) => sum + (Number(item.total) || 0),
     0
   );
 
   let discount = 0;
   if (data.discount_type === "percentage") {
-    discount = (subtotal * (data.discount_value || 0)) / 100;
+    discount = (subtotal * (Number(data.discount_value) || 0)) / 100;
   } else {
-    discount = data.discount_value || 0;
+    discount = Number(data.discount_value) || 0;
   }
 
-  const taxableAmount = subtotal - discount;
+  const taxableAmount = Math.max(0, subtotal - discount);
   let tax = 0;
   if (data.tax_type === "percentage") {
-    tax = (taxableAmount * (data.tax_value || 0)) / 100;
+    tax = (taxableAmount * (Number(data.tax_value) || 0)) / 100;
   } else {
-    tax = data.tax_value || 0;
+    tax = Number(data.tax_value) || 0;
   }
 
-  const shipping = data.shipping || 0;
-  const total = subtotal - discount + tax + shipping;
+  const shipping = Number(data.shipping) || 0;
+  const total = taxableAmount + tax + shipping;
 
-  return { subtotal, discount, tax, total };
+  return { subtotal, discount, tax, total, items };
 }
 
 function deriveStatus(paid: number, total: number, current?: string): string {
@@ -47,7 +77,10 @@ export async function getInvoices(filters: any = {}) {
     if (filters.status) query.status = filters.status;
     if (filters.customer) query.customer = filters.customer;
     if (filters.search) {
-      query.invoice_number = { $regex: filters.search, $options: "i" };
+      query.$or = [
+        { invoice_number: { $regex: filters.search, $options: "i" } },
+        { "items.name": { $regex: filters.search, $options: "i" } },
+      ];
     }
 
     const invoices = await Invoice.find(query)
@@ -77,21 +110,35 @@ export async function getInvoice(id: string) {
 export async function createInvoice(data: any) {
   try {
     // Check if invoice_number already exists
-    const existing = await Invoice.findOne({
-      invoice_number: data.invoice_number,
-    });
-    if (existing) throw new Error("Invoice number already exists");
+    if (data.invoice_number) {
+      const existing = await Invoice.findOne({
+        invoice_number: data.invoice_number,
+      });
+      if (existing) throw new Error("Invoice number already exists");
+    }
 
-    const { subtotal, discount, tax, total } = computeTotals(data);
+    // Resolve customer ID if object was passed
+    const customerId =
+      typeof data.customer === "object"
+        ? data.customer?._id || data.customer?.id
+        : data.customer;
+
+    if (!customerId || !mongoose.isValidObjectId(customerId)) {
+      throw new Error("Valid customer is required");
+    }
+
+    const { subtotal, discount, tax, total, items } = computeTotals(data);
 
     const invoice = new Invoice({
       ...data,
+      customer: customerId,
+      items,
       subtotal,
       discount,
       tax,
       total,
-      paid: 0,
-      due: total,
+      paid: Number(data.paid) || 0,
+      due: total - (Number(data.paid) || 0),
       status: data.status || "unpaid",
     });
 
@@ -112,9 +159,11 @@ export async function updateInvoice(id: string, data: any) {
     const existing = await Invoice.findById(id);
     if (!existing) throw new Error("Invoice not found");
 
+    const itemsToCompute = data.items !== undefined ? data.items : existing.items;
+
     // Recompute totals if items or discount/tax/shipping changed
-    const { subtotal, discount, tax, total } = computeTotals({
-      items: data.items ?? existing.items,
+    const { subtotal, discount, tax, total, items } = computeTotals({
+      items: itemsToCompute,
       discount_type: data.discount_type ?? existing.discount_type,
       discount_value: data.discount_value ?? existing.discount_value,
       tax_type: data.tax_type ?? existing.tax_type,
@@ -122,21 +171,31 @@ export async function updateInvoice(id: string, data: any) {
       shipping: data.shipping ?? existing.shipping,
     });
 
-    const paid = existing.paid; // keep existing paid amount
+    const paid = data.paid !== undefined ? Number(data.paid) : existing.paid;
     const due = Math.max(0, total - paid);
+
+    const updatePayload: any = {
+      ...data,
+      items,
+      subtotal,
+      discount,
+      tax,
+      total,
+      paid,
+      due,
+      status: deriveStatus(paid, total, data.status ?? existing.status),
+    };
+
+    if (data.customer) {
+      updatePayload.customer =
+        typeof data.customer === "object"
+          ? data.customer._id || data.customer.id
+          : data.customer;
+    }
 
     const invoice = await Invoice.findByIdAndUpdate(
       id,
-      {
-        ...data,
-        subtotal,
-        discount,
-        tax,
-        total,
-        paid,
-        due,
-        status: deriveStatus(paid, total, data.status ?? existing.status),
-      },
+      updatePayload,
       { new: true, runValidators: true }
     ).populate("customer", "name email company phone");
 

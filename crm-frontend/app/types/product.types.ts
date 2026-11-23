@@ -65,3 +65,12 @@ export interface BoxPrint {
   printName: string;
   status: "active" | "inactive";
 }
+
+export interface ColorVariant {
+  _id?: string;
+  color: string;
+  quality: string;
+  quantity: number;
+  sku?: string;
+  imageUrl?: string;
+}

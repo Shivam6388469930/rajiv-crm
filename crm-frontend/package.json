@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:defaults": "node scripts/seed-defaults.js",
+    "seed:products": "node scripts/seed-products.js"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.19",

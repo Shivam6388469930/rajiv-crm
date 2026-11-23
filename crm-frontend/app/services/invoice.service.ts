@@ -1,6 +1,6 @@
 // app/services/invoice.service.ts
 export interface InvoiceItem {
-  product_id?: string;
+  product_id?: string | null;
   name: string;
   sku: string;
   quantity: number;
