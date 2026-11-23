@@ -375,10 +375,14 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
     });
 
     let brandId = toId(formData.brand);
-    if (!isValidObjectId(brandId) && brands.length > 0) {
+    if (brandId && brands.length > 0) {
       const matched = brands.find(
-        (b) => b.brandName?.toLowerCase() === String(formData.brand).toLowerCase() ||
-               b.slug?.toLowerCase() === String(formData.brand).toLowerCase()
+        (b) =>
+          b._id === brandId ||
+          b.id === brandId ||
+          b.brandName?.toLowerCase() === String(formData.brand).toLowerCase() ||
+          b.name?.toLowerCase() === String(formData.brand).toLowerCase() ||
+          b.slug?.toLowerCase() === String(formData.brand).toLowerCase()
       );
       if (matched) {
         brandId = matched._id || matched.id;
@@ -386,9 +390,13 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
     }
 
     let supplierId = toId(formData.supplier);
-    if (!isValidObjectId(supplierId) && suppliers.length > 0) {
+    if (supplierId && suppliers.length > 0) {
       const matched = suppliers.find(
-        (s) => s.supplierName?.toLowerCase() === String(formData.supplier).toLowerCase()
+        (s) =>
+          s._id === supplierId ||
+          s.id === supplierId ||
+          s.supplierName?.toLowerCase() === String(formData.supplier).toLowerCase() ||
+          s.name?.toLowerCase() === String(formData.supplier).toLowerCase()
       );
       if (matched) {
         supplierId = matched._id || matched.id;
@@ -396,10 +404,13 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
     }
 
     let categoryId = toId(selectedCategory);
-    if (!isValidObjectId(categoryId) && categories.length > 0) {
+    if (categoryId && categories.length > 0) {
       const matched = categories.find(
-        (c) => c.name?.toLowerCase() === String(selectedCategory).toLowerCase() ||
-               c.slug?.toLowerCase() === String(selectedCategory).toLowerCase()
+        (c) =>
+          c._id === categoryId ||
+          (c as any).id === categoryId ||
+          c.name?.toLowerCase() === String(selectedCategory).toLowerCase() ||
+          c.slug?.toLowerCase() === String(selectedCategory).toLowerCase()
       );
       if (matched) {
         categoryId = matched._id || (matched as any).id;
@@ -407,20 +418,18 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
     }
 
     let subcategoryId = toId(selectedSubcategory);
-    if (!isValidObjectId(subcategoryId) && subcategories.length > 0) {
+    if (subcategoryId && subcategories.length > 0) {
       const matched = subcategories.find(
-        (s) => s.name?.toLowerCase() === String(selectedSubcategory).toLowerCase() ||
-               s.slug?.toLowerCase() === String(selectedSubcategory).toLowerCase()
+        (s) =>
+          s._id === subcategoryId ||
+          (s as any).id === subcategoryId ||
+          s.name?.toLowerCase() === String(selectedSubcategory).toLowerCase() ||
+          s.slug?.toLowerCase() === String(selectedSubcategory).toLowerCase()
       );
       if (matched) {
         subcategoryId = matched._id || (matched as any).id;
       }
     }
-
-    if (brandId && !isValidObjectId(brandId)) newErrors.brand = "Please re-select a valid brand";
-    if (supplierId && !isValidObjectId(supplierId)) newErrors.supplier = "Please re-select a valid supplier";
-    if (categoryId && !isValidObjectId(categoryId)) newErrors.category = "Please re-select a valid category";
-    if (subcategoryId && !isValidObjectId(subcategoryId)) newErrors.subcategory = "Please re-select a valid subcategory";
 
     const fieldConfigs = getFieldConfigs();
     fieldConfigs.forEach((field: any) => {
@@ -703,9 +712,19 @@ export default function ProductForm({ isOpen, onClose, product, onSuccess }: Pro
                 className={`w-full px-3 py-2 border ${errors.brand ? "border-red-500" : "border-gray-200"} rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition`}
               >
                 <option value="">Select Brand</option>
+                {formData.brand &&
+                  !brands.some(
+                    (b) =>
+                      toId(b) === toId(formData.brand) ||
+                      b.brandName?.toLowerCase() === String(formData.brand).toLowerCase()
+                  ) && (
+                    <option value={toId(formData.brand)}>
+                      {typeof formData.brand === "string" ? formData.brand : formData.brand?.brandName || "Selected Brand"}
+                    </option>
+                  )}
                 {brands.map((brand) => (
                   <option key={brand._id || brand.id} value={brand._id || brand.id}>
-                    {brand.brandName}
+                    {brand.brandName || brand.name}
                   </option>
                 ))}
               </select>

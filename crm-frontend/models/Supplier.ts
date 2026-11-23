@@ -42,4 +42,8 @@ const supplierSchema = new Schema(
   }
 );
 
+supplierSchema.index({ status: 1 });
+supplierSchema.index({ supplierName: 1 });
+supplierSchema.index({ createdAt: -1 });
+
 export default models.Supplier || model("Supplier", supplierSchema);

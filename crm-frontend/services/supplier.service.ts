@@ -3,13 +3,13 @@ import Supplier from "@/models/Supplier";
 export const getSuppliers = async () => {
   return await Supplier.find().sort({
     createdAt: -1,
-  });
+  }).lean();
 };
 
 export const getSupplier = async (
   id: string
 ) => {
-  return await Supplier.findById(id);
+  return await Supplier.findById(id).lean();
 };
 
 export const createSupplier = async (

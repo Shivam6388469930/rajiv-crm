@@ -1,8 +1,8 @@
 // services/product.service.ts
 import Product from "@/models/Product";
-import "@/models/Category";
-import "@/models/Brand";
-import "@/models/Supplier";
+import Category from "@/models/Category";
+import Brand from "@/models/Brand";
+import Supplier from "@/models/Supplier";
 import mongoose from "mongoose";
 
 function attachSubcategory(prod: any) {
@@ -18,6 +18,114 @@ function attachSubcategory(prod: any) {
     ...prod,
     subcategory: subcategoryObj,
   };
+}
+
+/**
+ * Automatically resolves Category, Subcategory, Brand, and Supplier.
+ * If names or slugs are provided instead of ObjectIds, matches or creates them
+ * so product creation never fails with invalid ID or cast errors.
+ */
+export async function resolveProductReferences(data: any) {
+  if (!data) return data;
+
+  // 1. Resolve Category
+  let categoryDoc: any = null;
+  if (data.category) {
+    if (mongoose.isValidObjectId(data.category)) {
+      categoryDoc = await Category.findById(data.category);
+    } else {
+      categoryDoc = await Category.findOne({
+        $or: [
+          { name: new RegExp(`^${data.category}$`, "i") },
+          { slug: String(data.category).toLowerCase().trim() },
+        ],
+      });
+    }
+
+    if (categoryDoc) {
+      data.category = categoryDoc._id;
+    }
+  }
+
+  // 2. Resolve Subcategory
+  if (data.subcategory) {
+    if (!mongoose.isValidObjectId(data.subcategory)) {
+      if (categoryDoc && Array.isArray(categoryDoc.subcategories)) {
+        const sub = categoryDoc.subcategories.find(
+          (s: any) =>
+            s.name?.toLowerCase() === String(data.subcategory).toLowerCase().trim() ||
+            s.slug?.toLowerCase() === String(data.subcategory).toLowerCase().trim() ||
+            s._id?.toString() === String(data.subcategory)
+        );
+        if (sub) {
+          data.subcategory = sub._id;
+        }
+      }
+    }
+  }
+
+  // 3. Resolve Brand
+  if (data.brand) {
+    let brandDoc: any = null;
+    if (mongoose.isValidObjectId(data.brand)) {
+      brandDoc = await Brand.findById(data.brand);
+    } else {
+      const brandStr = String(data.brand).trim();
+      const brandSlug = brandStr.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      brandDoc = await Brand.findOne({
+        $or: [
+          { brandName: new RegExp(`^${brandStr}$`, "i") },
+          { slug: brandSlug },
+        ],
+      });
+
+      if (!brandDoc && brandStr) {
+        // Auto-create brand document linked to the category
+        brandDoc = await Brand.create({
+          brandName: brandStr,
+          slug: brandSlug || `brand-${Date.now()}`,
+          category: data.category || categoryDoc?._id,
+          description: `Master brand for ${brandStr}`,
+          isActive: true,
+        });
+      }
+    }
+
+    if (brandDoc) {
+      data.brand = brandDoc._id;
+    }
+  }
+
+  // 4. Resolve Supplier
+  if (data.supplier) {
+    let supplierDoc: any = null;
+    if (mongoose.isValidObjectId(data.supplier)) {
+      supplierDoc = await Supplier.findById(data.supplier);
+    } else {
+      const supplierStr = String(data.supplier).trim();
+      supplierDoc = await Supplier.findOne({
+        supplierName: new RegExp(`^${supplierStr}$`, "i"),
+      });
+
+      if (!supplierDoc && supplierStr) {
+        // Auto-create supplier document
+        const safeEmailPrefix = supplierStr.toLowerCase().replace(/[^a-z0-9]+/g, "");
+        supplierDoc = await Supplier.create({
+          supplierName: supplierStr,
+          email: `${safeEmailPrefix || "supplier"}@opticalcrm.local`,
+          phone: "9876543210",
+          supplyProduct: categoryDoc?.name || "Optical Goods",
+          status: "active",
+        });
+      }
+    }
+
+    if (supplierDoc) {
+      data.supplier = supplierDoc._id;
+    }
+  }
+
+  return data;
 }
 
 export async function getProducts(filters: any = {}) {
@@ -45,7 +153,14 @@ export async function getProducts(filters: any = {}) {
     }
 
     if (filters.search) {
-      query.$text = { $search: filters.search };
+      const trimmed = filters.search.trim();
+      const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = new RegExp(escaped, "i");
+      query.$or = [
+        { name: searchRegex },
+        { sku: searchRegex },
+        { barcode: searchRegex },
+      ];
     }
 
     const products = await Product.find(query)
@@ -80,6 +195,9 @@ export async function getProduct(id: string) {
 
 export async function createProduct(data: any) {
   try {
+    // Automatically resolve names/slugs to ObjectIds
+    await resolveProductReferences(data);
+
     // Check if SKU already exists
     const existing = await Product.findOne({ sku: data.sku });
     if (existing) {
@@ -96,6 +214,9 @@ export async function createProduct(data: any) {
 
 export async function updateProduct(id: string, data: any) {
   try {
+    // Automatically resolve names/slugs to ObjectIds
+    await resolveProductReferences(data);
+
     // If updating SKU, check if new SKU already exists
     if (data.sku) {
       const existing = await Product.findOne({

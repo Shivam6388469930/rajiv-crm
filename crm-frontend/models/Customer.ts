@@ -58,5 +58,10 @@ const customerSchema = new Schema(
   }
 );
 
+customerSchema.index({ status: 1 });
+customerSchema.index({ type: 1 });
+customerSchema.index({ name: 1 });
+customerSchema.index({ createdAt: -1 });
+
 export default models.Customer ||
   model("Customer", customerSchema);

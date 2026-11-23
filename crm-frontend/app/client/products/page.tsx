@@ -1,7 +1,7 @@
 // app/admin/products/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -19,6 +19,14 @@ export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filters, setFilters] = useState<any>({});
 
+  // Debounce search input by 300ms to eliminate redundant API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFilters((prev: any) => ({ ...prev, search: searchTerm.trim() || undefined }));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const handleEdit = (product: any) => {
     setEditingProduct(product);
     setIsFormOpen(true);
@@ -30,9 +38,7 @@ export default function ProductsPage() {
   };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearchTerm(value);
-    setFilters({ ...filters, search: value });
+    setSearchTerm(e.target.value);
   };
 
   return (

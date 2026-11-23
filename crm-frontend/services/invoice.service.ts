@@ -85,7 +85,8 @@ export async function getInvoices(filters: any = {}) {
 
     const invoices = await Invoice.find(query)
       .populate("customer", "name email company phone")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     return invoices;
   } catch (error: any) {
@@ -95,10 +96,9 @@ export async function getInvoices(filters: any = {}) {
 
 export async function getInvoice(id: string) {
   try {
-    const invoice = await Invoice.findById(id).populate(
-      "customer",
-      "name email company phone address"
-    );
+    const invoice = await Invoice.findById(id)
+      .populate("customer", "name email company phone address")
+      .lean();
 
     if (!invoice) throw new Error("Invoice not found");
     return invoice;
@@ -145,10 +145,9 @@ export async function createInvoice(data: any) {
     await invoice.save();
 
     // Return populated
-    return await Invoice.findById(invoice._id).populate(
-      "customer",
-      "name email company phone"
-    );
+    return await Invoice.findById(invoice._id)
+      .populate("customer", "name email company phone")
+      .lean();
   } catch (error: any) {
     throw new Error(error.message);
   }
@@ -197,7 +196,9 @@ export async function updateInvoice(id: string, data: any) {
       id,
       updatePayload,
       { new: true, runValidators: true }
-    ).populate("customer", "name email company phone");
+    )
+      .populate("customer", "name email company phone")
+      .lean();
 
     return invoice;
   } catch (error: any) {

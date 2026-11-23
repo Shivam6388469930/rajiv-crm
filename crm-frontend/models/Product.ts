@@ -103,7 +103,13 @@ const productSchema = new Schema(
   }
 );
 
-// Index for search
+// Index for search and high-performance filtering
 productSchema.index({ name: "text", sku: "text", barcode: "text" });
+productSchema.index({ category: 1, subcategory: 1 });
+productSchema.index({ brand: 1 });
+productSchema.index({ supplier: 1 });
+productSchema.index({ status: 1 });
+productSchema.index({ stock: 1, minimum_stock: 1 });
+productSchema.index({ createdAt: -1 });
 
 export default models.Product || model("Product", productSchema);

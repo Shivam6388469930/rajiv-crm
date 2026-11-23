@@ -37,4 +37,8 @@ const brandSchema = new Schema(
   }
 );
 
+brandSchema.index({ category: 1 });
+brandSchema.index({ isActive: 1 });
+brandSchema.index({ brandName: 1 });
+
 export default models.Brand || model("Brand", brandSchema);

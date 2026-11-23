@@ -3,13 +3,13 @@ import Customer from "@/models/Customer";
 export const getCustomers = async () => {
   return await Customer.find().sort({
     createdAt: -1,
-  });
+  }).lean();
 };
 
 export const getCustomer = async (
   id: string
 ) => {
-  return await Customer.findById(id);
+  return await Customer.findById(id).lean();
 };
 
 export const createCustomer = async (

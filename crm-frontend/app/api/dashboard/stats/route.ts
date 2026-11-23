@@ -12,41 +12,7 @@ export async function GET(req: NextRequest) {
   try {
     await connectDB();
 
-    // Fetch collections in parallel
-    const [invoices, customers, suppliers, products, categories] = await Promise.all([
-      Invoice.find().populate("customer", "name email company").sort({ createdAt: -1 }).lean(),
-      Customer.find().lean(),
-      Supplier.find().lean(),
-      Product.find().populate("category", "name slug").lean(),
-      Category.find().lean(),
-    ]);
-
-    // ─── Financial & Sales Stats ─────────────────────────────────────────────
-    let totalSales = 0;
-    let totalPaid = 0;
-    let totalDue = 0;
-
-    const invoiceStatusCounts: Record<string, number> = {
-      paid: 0,
-      partial: 0,
-      unpaid: 0,
-      draft: 0,
-      cancelled: 0,
-    };
-
-    invoices.forEach((inv: any) => {
-      totalSales += Number(inv.total) || 0;
-      totalPaid += Number(inv.paid) || 0;
-      totalDue += Number(inv.due) || 0;
-      const st = (inv.status || "unpaid").toLowerCase();
-      if (invoiceStatusCounts[st] !== undefined) {
-        invoiceStatusCounts[st]++;
-      } else {
-        invoiceStatusCounts[st] = 1;
-      }
-    });
-
-    // ─── Monthly Sales (Past 6 Months) ─────────────────────────────────────────
+    // ─── Past 6 Months Reference Skeleton ────────────────────────────────────
     const now = new Date();
     const monthsData: {
       key: string;
@@ -72,74 +38,214 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    invoices.forEach((inv: any) => {
-      if (!inv.date) return;
-      const invDate = new Date(inv.date);
-      const key = `${invDate.getFullYear()}-${String(invDate.getMonth() + 1).padStart(2, "0")}`;
-      const entry = monthsData.find((m) => m.key === key);
-      if (entry) {
-        entry.sales += Number(inv.total) || 0;
-        entry.paid += Number(inv.paid) || 0;
-        entry.invoices++;
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    // ─── Parallel High-Performance Aggregations & Projections ────────────────
+    const [
+      invoiceAggregateResult,
+      monthlyAggregateResult,
+      recentInvoices,
+      totalCustomers,
+      customerTypeAgg,
+      topCustomers,
+      totalSuppliers,
+      activeSuppliers,
+      topSuppliers,
+      totalProducts,
+      outOfStockCount,
+      lowStockCount,
+      categoryDistributionRaw,
+    ] = await Promise.all([
+      // 1. Overall Financial & Status Totals in a single pipeline
+      Invoice.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalSales: { $sum: { $ifNull: ["$total", 0] } },
+            totalPaid: { $sum: { $ifNull: ["$paid", 0] } },
+            totalDue: { $sum: { $ifNull: ["$due", 0] } },
+            totalInvoices: { $sum: 1 },
+            paidCount: { $sum: { $cond: [{ $eq: ["$status", "paid"] }, 1, 0] } },
+            partialCount: { $sum: { $cond: [{ $eq: ["$status", "partial"] }, 1, 0] } },
+            unpaidCount: { $sum: { $cond: [{ $eq: ["$status", "unpaid"] }, 1, 0] } },
+            draftCount: { $sum: { $cond: [{ $eq: ["$status", "draft"] }, 1, 0] } },
+            cancelledCount: { $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] } },
+          },
+        },
+      ]),
+
+      // 2. Monthly Sales Aggregation
+      Invoice.aggregate([
+        {
+          $match: {
+            date: { $gte: sixMonthsAgo },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m", date: "$date" } },
+            sales: { $sum: { $ifNull: ["$total", 0] } },
+            paid: { $sum: { $ifNull: ["$paid", 0] } },
+            invoices: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+
+      // 3. Recent 6 Invoices (only required fields with projection)
+      Invoice.find()
+        .select("_id invoice_number customer date total paid due status")
+        .populate("customer", "name company")
+        .sort({ date: -1, createdAt: -1 })
+        .limit(6)
+        .lean(),
+
+      // 4. Customer count
+      Customer.countDocuments(),
+
+      // 5. Customer Type Distribution
+      Customer.aggregate([
+        {
+          $group: {
+            _id: { $ifNull: ["$type", "Other"] },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // 6. Top 5 Customers by spent
+      Customer.find()
+        .select("_id name company email total_spent total_orders")
+        .sort({ total_spent: -1 })
+        .limit(5)
+        .lean(),
+
+      // 7. Total Suppliers
+      Supplier.countDocuments(),
+
+      // 8. Active Suppliers
+      Supplier.countDocuments({ status: "active" }),
+
+      // 9. Top 5 Suppliers
+      Supplier.find()
+        .select("_id supplierName supplyProduct phone status")
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean(),
+
+      // 10. Total Products
+      Product.countDocuments(),
+
+      // 11. Out of stock products
+      Product.countDocuments({ stock: { $lte: 0 } }),
+
+      // 12. Low stock products (stock > 0 and stock <= minimum_stock)
+      Product.countDocuments({
+        $expr: {
+          $and: [
+            { $gt: ["$stock", 0] },
+            { $lte: ["$stock", { $ifNull: ["$minimum_stock", 0] }] },
+          ],
+        },
+      }),
+
+      // 13. Category Distribution Aggregation
+      Product.aggregate([
+        {
+          $group: {
+            _id: "$category",
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $lookup: {
+            from: "categories",
+            localField: "_id",
+            foreignField: "_id",
+            as: "categoryDoc",
+          },
+        },
+        {
+          $unwind: {
+            path: "$categoryDoc",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $project: {
+            name: { $ifNull: ["$categoryDoc.name", "Uncategorized"] },
+            count: 1,
+          },
+        },
+      ]),
+    ]);
+
+    // ─── Format Invoices & Financials ────────────────────────────────────────
+    const invStats = invoiceAggregateResult[0] || {
+      totalSales: 0,
+      totalPaid: 0,
+      totalDue: 0,
+      totalInvoices: 0,
+      paidCount: 0,
+      partialCount: 0,
+      unpaidCount: 0,
+      draftCount: 0,
+      cancelledCount: 0,
+    };
+
+    const invoiceStatusCounts: Record<string, number> = {
+      paid: invStats.paidCount || 0,
+      partial: invStats.partialCount || 0,
+      unpaid: invStats.unpaidCount || 0,
+      draft: invStats.draftCount || 0,
+      cancelled: invStats.cancelledCount || 0,
+    };
+
+    // ─── Merge Monthly Aggregates ────────────────────────────────────────────
+    monthlyAggregateResult.forEach((item: any) => {
+      const match = monthsData.find((m) => m.key === item._id);
+      if (match) {
+        match.sales = item.sales || 0;
+        match.paid = item.paid || 0;
+        match.invoices = item.invoices || 0;
       }
     });
 
-    // ─── Customer Stats ───────────────────────────────────────────────────────
+    // ─── Format Customer Types ───────────────────────────────────────────────
     const customerTypeCounts: Record<string, number> = {};
-    customers.forEach((c: any) => {
-      const type = c.type || "Other";
-      customerTypeCounts[type] = (customerTypeCounts[type] || 0) + 1;
+    customerTypeAgg.forEach((item: any) => {
+      const type = item._id || "Other";
+      customerTypeCounts[type] = item.count;
     });
 
-    const topCustomers = [...customers]
-      .sort((a: any, b: any) => (b.total_spent || 0) - (a.total_spent || 0))
-      .slice(0, 5)
-      .map((c: any) => ({
-        _id: c._id,
-        name: c.name,
-        company: c.company,
-        email: c.email,
-        total_spent: c.total_spent || 0,
-        total_orders: c.total_orders || 0,
-      }));
-
-    // ─── Supplier Stats ───────────────────────────────────────────────────────
-    const activeSuppliers = suppliers.filter((s: any) => s.status === "active").length;
-    const topSuppliers = suppliers.slice(0, 5).map((s: any) => ({
-      _id: s._id,
-      name: s.supplierName,
-      product: s.supplyProduct,
-      phone: s.phone,
-      status: s.status,
+    // ─── Format Top Customers ────────────────────────────────────────────────
+    const formattedTopCustomers = topCustomers.map((c: any) => ({
+      _id: c._id,
+      name: c.name,
+      company: c.company || "",
+      email: c.email || "",
+      total_spent: c.total_spent || 0,
+      total_orders: c.total_orders || 0,
     }));
 
-    // ─── Inventory & Product Stats ───────────────────────────────────────────
-    let lowStockCount = 0;
-    let outOfStockCount = 0;
-    const categoryCountMap: Record<string, number> = {};
+    // ─── Format Top Suppliers ────────────────────────────────────────────────
+    const formattedTopSuppliers = topSuppliers.map((s: any) => ({
+      _id: s._id,
+      name: s.supplierName,
+      product: s.supplyProduct || "Eyewear",
+      phone: s.phone || "",
+      status: s.status || "active",
+    }));
 
-    products.forEach((p: any) => {
-      const stock = Number(p.stock) || 0;
-      const minStock = Number(p.minimum_stock) || 0;
-      if (stock === 0) outOfStockCount++;
-      else if (stock <= minStock) lowStockCount++;
+    // ─── Format Category Distribution ────────────────────────────────────────
+    const categoryDistribution = categoryDistributionRaw.map((c: any) => ({
+      name: c.name || "Uncategorized",
+      count: c.count || 0,
+    }));
 
-      const catName =
-        typeof p.category === "object" && p.category?.name
-          ? p.category.name
-          : "Uncategorized";
-      categoryCountMap[catName] = (categoryCountMap[catName] || 0) + 1;
-    });
-
-    const categoryDistribution = Object.entries(categoryCountMap).map(
-      ([name, count]) => ({
-        name,
-        count,
-      })
-    );
-
-    // ─── Recent Invoices ─────────────────────────────────────────────────────
-    const recentInvoices = invoices.slice(0, 6).map((inv: any) => ({
+    // ─── Format Recent Invoices ──────────────────────────────────────────────
+    const formattedRecentInvoices = recentInvoices.map((inv: any) => ({
       _id: inv._id,
       invoice_number: inv.invoice_number,
       customerName: inv.customer?.name || "Unknown Customer",
@@ -153,27 +259,26 @@ export async function GET(req: NextRequest) {
 
     return success("Dashboard statistics fetched successfully", {
       overview: {
-        totalSales,
-        totalPaid,
-        totalDue,
-        totalInvoices: invoices.length,
-        totalCustomers: customers.length,
-        totalSuppliers: suppliers.length,
+        totalSales: invStats.totalSales,
+        totalPaid: invStats.totalPaid,
+        totalDue: invStats.totalDue,
+        totalInvoices: invStats.totalInvoices,
+        totalCustomers,
+        totalSuppliers,
         activeSuppliers,
-        totalProducts: products.length,
+        totalProducts,
         lowStockCount,
         outOfStockCount,
       },
       monthlySales: monthsData,
       invoiceStatusCounts,
       customerTypeCounts,
-      topCustomers,
-      topSuppliers,
+      topCustomers: formattedTopCustomers,
+      topSuppliers: formattedTopSuppliers,
       categoryDistribution,
-      recentInvoices,
+      recentInvoices: formattedRecentInvoices,
     });
   } catch (err: any) {
     return error(err.message);
   }
 }
-
